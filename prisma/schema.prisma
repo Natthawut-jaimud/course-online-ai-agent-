@@ -1,0 +1,270 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  STUDENT
+  INSTRUCTOR
+  ADMIN
+}
+
+enum LessonType {
+  VIDEO
+  PDF
+  QUIZ
+  ASSIGNMENT
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  password      String?
+  role          Role      @default(STUDENT)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  accounts    Account[]
+  sessions    Session[]
+  courses     Course[]     // As instructor
+  enrollments Enrollment[] // As student
+  progresses  Progress[]
+  certificates Certificate[]
+  reviews     Review[]
+  assignmentSubmissions AssignmentSubmission[]
+
+  @@map("users")
+}
+
+model Account {
+  id                 String  @id @default(cuid())
+  userId             String
+  type               String
+  provider           String
+  providerAccountId  String
+  refresh_token      String?  @db.Text
+  access_token       String?  @db.Text
+  expires_at         Int?
+  token_type         String?
+  scope              String?
+  id_token           String?  @db.Text
+  session_state      String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+model Course {
+  id           String   @id @default(cuid())
+  title        String
+  description  String?
+  imageUrl     String?
+  price        Float?   @default(0)
+  isPublished  Boolean  @default(false)
+  instructorId String
+  instructor   User     @relation(fields: [instructorId], references: [id], onDelete: Cascade)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  sections     Section[]
+  reviews      Review[]
+  certificates Certificate[]
+  enrollments  Enrollment[]
+
+  @@map("courses")
+}
+
+model Enrollment {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  courseId  String
+  course    Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, courseId])
+  @@map("enrollments")
+}
+
+model Section {
+  id          String   @id @default(cuid())
+  title       String
+  position    Int
+  isPublished Boolean  @default(false)
+  courseId    String
+  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  lessons     Lesson[]
+
+  @@map("sections")
+}
+
+model Lesson {
+  id             String     @id @default(cuid())
+  title          String
+  description    String?    @db.Text
+  position       Int
+  isPublished    Boolean    @default(false)
+  isFree         Boolean    @default(false)
+  type           LessonType
+  
+  // Content based on type
+  videoUrl       String?
+  subtitleUrl    String?    @db.Text
+  pdfUrl         String?
+  assignmentData Json?
+
+  sectionId      String
+  section        Section    @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  // Relations
+  quiz           Quiz?
+  progresses     Progress[]
+  assignmentSubmissions AssignmentSubmission[]
+
+  @@map("lessons")
+}
+
+model Quiz {
+  id        String   @id @default(cuid())
+  lessonId  String   @unique
+  lesson    Lesson   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  questions Question[]
+
+  @@map("quizzes")
+}
+
+model Question {
+  id        String   @id @default(cuid())
+  prompt    String   @default("") // โจทย์คำถาม
+  position  Int      @default(0)  // ลำดับของคำถาม
+  quizId    String
+  quiz      Quiz     @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  
+  options   QuestionOption[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("questions")
+}
+
+model QuestionOption {
+  id         String   @id @default(cuid())
+  text       String   // ข้อความตัวเลือก
+  isCorrect  Boolean  // เป็นคำตอบที่ถูกหรือไม่
+  questionId String
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@map("question_options")
+}
+
+model Progress {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lessonId        String
+  lesson          Lesson   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  completed       Boolean  @default(false)
+  quizScore       Int?     // คะแนนที่ได้
+  quizTotal       Int?     // คะแนนเต็ม
+  watchTime       Int      @default(0)
+  watchPercentage Float?   @default(0)
+  score           Int?     
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([userId, lessonId])
+  @@map("progresses")
+}
+
+model Certificate {
+  id            String   @id @default(cuid())
+  certificateId String   @unique
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  courseId      String
+  course        Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  issuedAt      DateTime @default(now())
+
+  @@unique([userId, courseId])
+  @@map("certificates")
+}
+
+model Review {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  courseId  String
+  course    Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  rating    Int
+  comment   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, courseId])
+  @@map("reviews")
+}
+
+model AssignmentSubmission {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lessonId    String
+  lesson      Lesson   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  content     String?  @db.Text // For text-based submissions
+  fileUrl     String?  // For file uploads (PDF, ZIP, etc.)
+  isGraded    Boolean  @default(false)
+  score       Int?     // Score given by the instructor
+  feedback    String?  @db.Text // Teacher's comment/feedback
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([userId, lessonId])
+  @@map("assignment_submissions")
+}
